@@ -1,0 +1,228 @@
+#! /usr/bin/env bash
+# ADD YOUR CODE HERE
+import validators
+import ssl
+import os
+from bs4 import BeautifulSoup
+import socket
+import json
+
+
+
+FLAGS = ["-h", "-b","-u", "-s", "-f"]
+navURLforward = []
+already_visited = []
+
+class Colors:
+    	
+
+	Bold       = '\033[1m'
+	Dim        = '\033[2m'
+	Underlined = '\033[4m'
+	Blink      = '\033[5m'
+	Reverse    = '\033[7m'
+	Hidden     = '\033[8m'
+	FAIL       = '\033[91m'
+    ENDCOLOR   = '\033[0m'
+	Default      = '\033[39m'
+	Black        = '\033[30m'
+	Red          = '\033[31m'
+	Green        = '\033[32m'
+	Yellow       = '\033[33m'
+	Blue         = '\033[34m'
+	Magenta      = '\033[35m'
+	Cyan         = '\033[36m'
+	LightGray    = '\033[37m'
+	DarkGray     = '\033[90m'
+	LightRed     = '\033[91m'
+	LightGreen   = '\033[92m'
+	LightYellow  = '\033[93m'
+	LightBlue    = '\033[94m'
+	LightMagenta = '\033[95m'
+	LightCyan    = '\033[96m'
+	White        = '\033[97m'
+    BOLD         = '\033[1m'
+    UNDERLINE    = '\033[4m'
+	BackgroundDefault      = '\033[49m'
+	BackgroundBlack        = '\033[40m'
+	BackgroundRed          = '\033[41m'
+	BackgroundGreen        = '\033[42m'
+	BackgroundYellow       = '\033[43m'
+	BackgroundBlue         = '\033[44m'
+	BackgroundMagenta      = '\033[45m'
+	BackgroundCyan         = '\033[46m'
+	BackgroundLightGray    = '\033[47m'
+	BackgroundDarkGray     = '\033[100m'
+	BackgroundLightRed     = '\033[101m'
+	BackgroundLightGreen   = '\033[102m'
+	BackgroundLightYellow  = '\033[103m'
+	BackgroundLightBlue    = '\033[104m'
+	BackgroundLightMagenta = '\033[105m'
+	BackgroundLightCyan    = '\033[106m'
+	BackgroundWhite        = '\033[107m'
+
+
+
+def ColoredBanner(text, color, end="\n"):
+    print(color + text + Colors.ENDCOLOR, end=end) 
+
+def help():
+    ColoredBanner("Commands:\n\
+            go2web -h               # show help\n\
+            go2web -b               # navigate back\n\
+            go2web -u <URL>         # make an HTTP request to URL and print the response\n\
+            go2web -s <search-term> # search the term and print top 10 results\n\
+            go2web -f               # navigate forward", Colors.Blue)
+ 
+def search(searchTerm):
+    request_url = f"/customsearch/v1?key=AIzaSyD1TY-uJDXAl4m01lCC-orZUfga_D2e_zw&cx=f2ff5f215d5484786&q={searchTerm}&start=1&num=10"
+    request = "GET " + request_url + " HTTP/1.1\r\nConnection:close\r\nHost:www.googleapis.com\r\n\r\n"
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
+        sslClient = ssl.wrap_socket(client)
+        sslClient.connect(("www.googleapis.com", 443))  
+        sslClient.send(request.encode())  
+
+        chunks = []
+        while True:
+            data = sslClient.recv(2048)
+            if not data:
+                break
+            chunks.append(data.decode())       
+        stringResult = ''.join(chunks)
+
+        response = stringResult[stringResult.find("{"):].replace("\n", "").replace("\r", "")[:-1]
+        jsonResult = json.loads(response)
+        for index, item in enumerate(jsonResult["items"]):
+            print(str(index + 1), end=". ")
+            ColoredBanner(item["title"], Colors.UNDERLINE)
+        
+        
+        while True:
+            ColoredBanner("To open a link enter any number in range 1-10, 'e' to exit ", Colors.Green)
+            ColoredBanner("??? ", Colors.Red, "")
+            inputCommand = input()
+
+            if(inputCommand == 'e'):
+                break
+            
+            try:
+                urlNumber = int(inputCommand)
+                if urlNumber > 0 and urlNumber <= 10:
+                    getUrl(list(jsonResult["items"])[urlNumber - 1]["link"])
+                else:
+                    ColoredBanner("Wrong command", Colors.FAIL)
+            except ValueError:
+                ColoredBanner("Wrong command", Colors.FAIL)
+
+
+
+def Back():
+    if len(already_visited) == 0:
+        ColoredBanner("Unable to go back, no page visited yet.", Colors.FAIL)
+        return
+    backUrl = already_visited.pop()
+    navURLforward.append(backUrl)
+    getUrl(backUrl)
+    already_visited.pop()
+
+def getUrl(url):
+    already_visited.append(url)
+    protocollessURL = url.replace("http://", "").replace("https://", "")
+    [host, path] =  protocollessURL.split("/", 1) if "/" in protocollessURL else [protocollessURL, ""]
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
+        sslClient =  ssl.create_default_context().wrap_socket(client, server_hostname=host)
+
+        
+        sslClient.connect((host, 443))  
+        
+      
+        request = "GET /" + path + " HTTP/1.1\r\naccept: text/html\r\nConnection: close\r\nHost:" + host + "\r\n\r\n"
+        sslClient.send(request.encode())  
+
+        response = b""
+        while True:
+            data = sslClient.recv(1024)
+            response += data
+            if not data or response.endswith(b'\r\n0\r\n\r\n'):
+                break
+        soup = BeautifulSoup(response[response.lower().find(b"<html"):], 'html.parser')
+        print(os.linesep.join([s for s in soup.get_text().splitlines() if s]))
+
+
+def Forward():
+    if len(navURLforward) == 0:
+        ColoredBanner("Unable to go forward before backward navigation", Colors.FAIL)
+        return
+    forwardUrl = navURLforward.pop()
+    already_visited.append(forwardUrl)
+    getUrl(forwardUrl)
+    navURLforward.pop()
+
+def main():
+    while(True):
+        ColoredBanner("<<< ", Colors.Yellow, "")
+        inputCommand = input()
+        commandWrd = inputCommand.split()
+
+        if not Validator(commandWrd):
+            continue
+
+
+        if commandWrd[1] == "-h":
+            help()
+            continue
+
+        if commandWrd[1] == "-b":
+            Back()
+            continue
+
+        if commandWrd[1] == "-u":
+            getUrl(commandWrd[2])
+            continue
+
+        if commandWrd[1] == "-s":
+            search(commandWrd[2:])
+            continue
+
+        if commandWrd[1] == "-f":
+            Forward()
+            continue
+
+def Validator(commandWrd):
+    if len(commandWrd) < 2:
+        ColoredBanner("Unknown command, consult -h flag to see available commands", Colors.FAIL)
+        return False
+    if commandWrd[0] != "go2web":
+        ColoredBanner("Your commands must start with: 'go2web' \nCheck -h flag for more information", Colors.FAIL)
+        return False;
+    if commandWrd[1] not in FLAGS:
+       ColoredBanner(f"Unknown flag \nType the 'go2web -h' to see all commands", Colors.FAIL)
+        return False; 
+    if commandWrd[1] == "-u":
+        if len(commandWrd) != 3:
+           ColoredBanner("The command you entered is not complete, Type 'go2web -h' command for more information", Colors.FAIL)
+            return False
+        
+        isUrlValid = validators.url(commandWrd[2]) or validators.domain(commandWrd[2])
+        if not isUrlValid:
+           ColoredBanner("Wrong URL, please check the URL and try again", Colors.FAIL)
+            return False
+
+    if commandWrd[1] == "-h":
+        if len(commandWrd) > 2:
+           ColoredBanner("Wrong Command \nType 'go2web -h' for more information", Colors.FAIL)
+            return False 
+    
+    if commandWrd[1] == '-s':
+        if len(commandWrd) <= 2:
+            ColoredBanner("Wrong command \nSearch command contains <search_tearm>", Colors.FAIL)
+            return False         
+
+    return True 
+
+main()
+
+
+
